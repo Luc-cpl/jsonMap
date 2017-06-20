@@ -10,10 +10,10 @@ import (
 // MakeJSON from an map[string]string
 func MakeJSON(jsonMap map[string]string, key string) (s string) {
 	value := jsonMap[key]
-	if arrayJSON := strings.TrimPrefix(value, "json:array "); arrayJSON != value {
-		array := strings.Split(arrayJSON, " ")
+	if strings.HasPrefix(value, "json:array ") {
+		array := strings.Split(value, " ")
 		arraysN := ""
-		for i := 0; i < len(array); i++ {
+		for i := 1; i < len(array); i++ {
 			newKey := array[i]
 			if key != "" {
 				newKey = key + " " + array[i]
@@ -26,10 +26,10 @@ func MakeJSON(jsonMap map[string]string, key string) (s string) {
 			}
 		}
 		s = "[" + arraysN + "]"
-	} else if objectJSON := strings.TrimPrefix(value, "json:object "); objectJSON != value {
-		array := strings.Split(objectJSON, " ")
+	} else if strings.HasPrefix(value, "json:object ") {
+		array := strings.Split(value, " ")
 		arraysN := ""
-		for i := 0; i < len(array); i++ {
+		for i := 1; i < len(array); i++ {
 			newKey := array[i]
 			if key != "" {
 				newKey = key + " " + array[i]
@@ -139,11 +139,9 @@ func UpdateValue(jsonMap map[string]string, updateMap map[string]string) (newMap
 	s := make(map[string]string)
 	s = jsonMap
 	for key := range updateMap {
-		t1 := strings.TrimPrefix(jsonMap[key], "json:array")
-		t2 := strings.TrimPrefix(jsonMap[key], "json:object")
-		if jsonMap[key] != "" && t1 != jsonMap[key] && t2 != jsonMap[key] {
+		if jsonMap[key] != "" && !strings.HasPrefix(jsonMap[key], "json:") {
 			s[key] = updateMap[key]
-		} else if jsonMap[key] != "" && (t1 != jsonMap[key] || t2 != jsonMap[key]) {
+		} else if jsonMap[key] != "" {
 			err = errors.New("can't update array or object, the map return untouched")
 			return jsonMap, err
 		} else {
@@ -157,7 +155,7 @@ func UpdateValue(jsonMap map[string]string, updateMap map[string]string) (newMap
 //Create a new object, array or value from each key passed hoes have an firt point on the original jsonMap and does not exists
 //to create from an array, just put the key value as a letter or word (ensure that the key does not exists on original jsonMap)
 //example of an createMap:
-//	["0 user"] = "contacts"								 - add a contacts field on the object
+//	["0 user"] = `"contacts"`								 - add a contacts field on the object
 //	["0 user contacts"] = "json:array 0"				 - place the contacts field like an array and put an key inside
 //	["0 user contacts 0"] = "json:object contactName" 	 - take the field from the contacts array like an object and put a contactName field inside
 //	["0 user contacts 0 contactName"] = "Luke Skywalker" - place a value inside contactName field
@@ -165,10 +163,8 @@ func Create(jsonMap map[string]string, createMap map[string]string) (newMap map[
 	s := make(map[string]string)
 	s = jsonMap
 	for key := range createMap {
-		t1 := strings.TrimPrefix(s[key], "json:array")
-		t2 := strings.TrimPrefix(s[key], "json:object")
-		if jsonMap[key] != "" && (t1 != jsonMap[key] || t2 != jsonMap[key]) {
-			s[key] = s[key] + " " + createMap[key]
+		if jsonMap[key] != "" && strings.HasPrefix(jsonMap[key], "json:") {
+			s[key] = s[key] + " " + strings.Trim(createMap[key], `"`)
 		} else if jsonMap[key] == "" {
 			s[key] = createMap[key]
 		} else {
@@ -181,19 +177,29 @@ func Create(jsonMap map[string]string, createMap map[string]string) (newMap map[
 
 //Delete a object or array from each key hoes eist on the original jsonMap, if the jsonMap becomes empyt, the key is removed from the json result
 //exemple of an deleteMap key and value: ["0 user"] = "deleteValue1 deleteValue2"
-func Delete(jsonMap map[string]string, deleteMap map[string]string) map[string]string {
+func Delete(jsonMap map[string]string, deleteMap map[string]string) (newMap map[string]string, err error) {
 	s := make(map[string]string)
 	s = jsonMap
 	for key := range deleteMap {
 		if jsonMap[key] != "" {
-			deleteArray := strings.Split(deleteMap[key], " ")
+			if strings.Contains(deleteMap[key], "json:array") {
+				err = errors.New("invalid value to delete: json:array")
+				return jsonMap, err
+			} else if strings.Contains(deleteMap[key], "json:object") {
+				err = errors.New("invalid value to delete: json:object")
+				return jsonMap, err
+			}
+			deleteArray := strings.Split(strings.Trim(deleteMap[key], `"`), " ")
 			for i := 0; i < len(deleteArray); i++ {
 				s[key] = strings.Replace(s[key], " "+deleteArray[i], "", 1)
-				if s[key] == "json:array" || s[key] == "json:object" {
-					s[key] = ""
+				switch s[key] {
+				case "json:array":
+					s[key] = "[]"
+				case "json:object":
+					s[key] = "{}"
 				}
 			}
 		}
 	}
-	return s
+	return s, nil
 }
